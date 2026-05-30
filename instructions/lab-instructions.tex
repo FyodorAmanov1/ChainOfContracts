@@ -1,0 +1,462 @@
+\documentclass[11pt,a4paper]{article}
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage{geometry}
+\geometry{margin=2.5cm}
+\usepackage{graphicx}
+\usepackage{hyperref}
+\usepackage{listings}
+\usepackage{xcolor}
+\usepackage{enumitem}
+\usepackage{fancyhdr}
+\usepackage{lastpage}
+
+\hypersetup{
+    colorlinks=true,
+    linkcolor=blue,
+    urlcolor=blue,
+}
+
+% Solidity style
+\lstdefinestyle{solidity}{
+    language=C++,
+    basicstyle=\footnotesize\ttfamily,
+    keywordstyle=\color{blue},
+    commentstyle=\color{gray},
+    stringstyle=\color{green!50!black},
+    numbers=left,
+    numberstyle=\tiny,
+    frame=single,
+    breaklines=true,
+    captionpos=b,
+}
+
+\pagestyle{fancy}
+\fancyhf{}
+\fancyhead[L]{ChainOfContractsLab}
+\fancyhead[R]{Blockchain Systems}
+\fancyfoot[C]{\thepage\ of \pageref{LastPage}}
+
+\title{\textbf{Chain of Contracts Lab} \\\large Generic Multi-Contract Systems on Ethereum and Polkadot}
+\author{Blockchain Systems Course}
+\date{Spring 2026}
+
+\begin{document}
+
+\maketitle
+\thispagestyle{empty}
+
+\vspace{1cm}
+\begin{center}
+\fbox{\parbox{0.9\textwidth}{
+\textbf{Learning Objectives:}
+\begin{itemize}
+    \item Understand the generic linked-list pattern for cross-contract communication
+    \item Deploy and wire an arbitrarily long chain of smart contracts
+    \item Verify chain execution through event analysis
+    \item Compare contract models across Ethereum and Polkadot
+\end{itemize}
+}}
+\end{center}
+\vspace{1cm}
+
+\newpage
+\tableofcontents
+\newpage
+
+\section{Introduction}
+
+In this lab, you will build a \textbf{generic chain of contracts} --- a
+linked list of smart contracts where each contract calls the next, forming
+a verifiable chain of \textbf{arbitrary length}. This pattern is fundamental
+to many real-world blockchain applications: supply chain tracking, multi-step
+approval workflows, layered DeFi protocols, and cross-chain message relays.
+
+Unlike the fixed three-contract pattern (A $\to$ B $\to$ C) used in previous
+versions, this lab uses a \textbf{generic linked-list architecture}:
+\[
+\text{User} \longrightarrow \textbf{ChainEntry} \longrightarrow \textbf{ChainLink(1)} \longrightarrow \textbf{ChainLink(2)} \longrightarrow \ldots \longrightarrow \textbf{ChainTerminal}
+\]
+
+You can insert any number of \texttt{ChainLink} contracts between the Entry
+and Terminal, limited only by the blockchain's gas/weight limits.
+
+You will implement this pattern on \textbf{two platforms}:
+\begin{enumerate}
+    \item \textbf{Ethereum} --- using Solidity and the Remix IDE
+    \item \textbf{Polkadot} --- using ink! 5.0 and the Contracts UI
+\end{enumerate}
+
+Both implementations will be verified by an automated grader that checks event
+ordering and final state correctness. The professor can also verify contracts
+deployed on public testnets via Etherscan and Subscan.
+
+\section{The Generic Chain Pattern}
+
+\subsection{Architecture}
+
+The pattern involves three contract roles that form a linked-list pipeline:
+
+\[
+\text{Entry} \longrightarrow \textbf{Link}_1 \longrightarrow \textbf{Link}_2 \longrightarrow \ldots \longrightarrow \textbf{Link}_N \longrightarrow \textbf{Terminal}
+\]
+
+\begin{itemize}
+    \item \textbf{ChainEntry (Entry Point)}: Receives initial data from the user,
+          records a receipt, emits \texttt{ChainStarted} and \texttt{EntryExecuted},
+          and forwards to the first ChainLink via \texttt{processAndForward}.
+    \item \textbf{ChainLink (Processor)}: Validates the data (non-empty,
+          $\le$ 1024 bytes), prepends a \texttt{[VALIDATED]} marker, emits
+          \texttt{LinkExecuted}, and forwards to the next contract via
+          \texttt{receiveFinal}. Each link has a unique \texttt{stepNumber}.
+    \item \textbf{ChainTerminal (Final Store)}: Accepts only from the last
+          ChainLink, stores a \texttt{FinalRecord} with hash and timestamp,
+          emits \texttt{FinalReceived} and \texttt{ChainCompleted}.
+\end{itemize}
+
+Each step emits events that the professor's grader will verify.
+For a chain with one link (the default lab configuration), the event order is:
+\begin{verbatim}
+ChainStarted -> EntryExecuted -> LinkExecuted -> FinalReceived -> ChainCompleted
+\end{verbatim}
+
+For an N-link chain, \texttt{LinkExecuted} appears N times:
+\begin{verbatim}
+ChainStarted -> EntryExecuted -> LinkExecuted(1) -> ... -> LinkExecuted(N) -> FinalReceived -> ChainCompleted
+\end{verbatim}
+
+\subsection{Data Flow}
+
+\begin{center}
+\fbox{\parbox{0.8\textwidth}{
+\textbf{Generic Chain Flow (1-link example)} \\
+\vspace{0.3cm}
+
+\noindent
+1. User calls \texttt{ChainEntry.startChain(data)} \\
+2. ChainEntry emits \texttt{ChainStarted}, \texttt{EntryExecuted}, calls
+   \texttt{ChainLink.processAndForward(chainId, data)} \\
+3. ChainLink validates, prepends \texttt{[VALIDATED]}, emits
+   \texttt{LinkExecuted}, calls \texttt{ChainTerminal.receiveFinal(chainId, transformedData)} \\
+4. ChainTerminal stores data, emits \texttt{FinalReceived} and
+   \texttt{ChainCompleted} \\
+5. Control returns to Entry, which marks the receipt as completed
+}}
+\end{center}
+
+\subsection{Smart Contract Interfaces}
+
+\paragraph{IChainEntry:}
+\begin{lstlisting}[style=solidity]
+interface IChainEntry {
+    event ChainStarted(uint256 indexed chainId, address indexed initiator, bytes data);
+    event EntryExecuted(uint256 indexed chainId, address indexed nextLink);
+
+    function setNextLink(address _nextLink) external;
+    function startChain(bytes calldata data) external returns (uint256);
+    function getReceipt(uint256 _chainId) external view
+        returns (uint256, address, bytes memory, bool);
+    function getAllChainIds() external view returns (uint256[] memory);
+}
+\end{lstlisting}
+
+\paragraph{IChainLink:}
+\begin{lstlisting}[style=solidity]
+interface IChainLink {
+    event LinkExecuted(uint256 indexed chainId, uint256 indexed stepNumber,
+        address indexed nextLink, bytes transformedData);
+    event LinkValidationFailed(uint256 indexed chainId, string reason);
+
+    function setNextLink(address _nextLink) external;
+    function setPrevLink(address _prevLink) external;
+    function setStepNumber(uint256 _step) external;
+    function processAndForward(uint256 chainId, bytes calldata data) external returns (bool);
+    function getStepNumber() external view returns (uint256);
+    function getNextLink() external view returns (address);
+    function getExecutionCount() external view returns (uint256);
+}
+\end{lstlisting}
+
+\paragraph{IChainTerminal:}
+\begin{lstlisting}[style=solidity]
+interface IChainTerminal {
+    event FinalReceived(address indexed from, uint256 indexed chainId,
+        bytes data, uint256 timestamp);
+    event ChainCompleted(uint256 indexed chainId, bytes32 dataHash);
+
+    function setPrevLink(address _prevLink) external;
+    function receiveFinal(uint256 chainId, bytes calldata data) external returns (bool);
+    function getRecord(uint256 chainId) external view
+        returns (uint256, bytes memory, bytes32, uint256, bool);
+    function getRecordCount() external view returns (uint256);
+}
+\end{lstlisting}
+
+\section{Ethereum Lab (Remix + Solidity)}
+
+\subsection{Setup}
+
+\begin{enumerate}
+    \item Open \url{https://remix.ethereum.org/}
+    \item Create a new workspace named \texttt{ChainOfContracts}
+    \item Create the following files in the \texttt{contracts/} folder:
+    \begin{itemize}
+        \item \texttt{IChainEntry.sol}
+        \item \texttt{IChainLink.sol}
+        \item \texttt{IChainTerminal.sol}
+        \item \texttt{ChainEntry.sol}
+        \item \texttt{ChainLink.sol}
+        \item \texttt{ChainTerminal.sol}
+    \end{itemize}
+\end{enumerate}
+
+\subsection{Task 1: Implement ChainTerminal (Final Store)}
+
+ChainTerminal is the simplest --- it stores validated data. Implement:
+
+\begin{itemize}
+    \item A \texttt{struct FinalRecord} containing: \texttt{chainId}, \texttt{data},
+          \texttt{dataHash} (keccak256 of data), \texttt{timestamp}, \texttt{exists}.
+    \item A \texttt{mapping(uint256 => FinalRecord)} for records.
+    \item \texttt{setPrevLink(address)} --- only owner, one-time set.
+    \item \texttt{receiveFinal(uint256, bytes)} --- only \texttt{prevLink} can call.
+          Store the record, emit \texttt{FinalReceived} and \texttt{ChainCompleted}.
+    \item \texttt{getRecord(uint256)} and \texttt{getRecordCount()} --- public queries.
+\end{itemize}
+
+\subsection{Task 2: Implement ChainLink (Processor)}
+
+ChainLink validates incoming data and forwards to the next contract:
+
+\begin{itemize}
+    \item State: \texttt{nextLink}, \texttt{prevLink}, \texttt{owner},
+          \texttt{stepNumber}, \texttt{executionCount}.
+    \item Constructor takes \texttt{uint256 \_stepNumber} to identify this link's position.
+    \item Access control: only \texttt{prevLink} can call \texttt{processAndForward}
+          and \texttt{receiveFinal}.
+    \item Validation rules:
+    \begin{itemize}
+        \item Data must not be empty.
+        \item Data must not exceed 1024 bytes.
+    \end{itemize}
+    \item On success: prepend \texttt{[VALIDATED]} to data, emit
+          \texttt{LinkExecuted}, call \texttt{receiveFinal} on the next contract.
+    \item On failure: emit \texttt{LinkValidationFailed}, return false.
+    \item Forwarding: use a low-level \texttt{call} with signature
+          \texttt{receiveFinal(uint256,bytes)} so the same code works whether
+          the next contract is another ChainLink or the ChainTerminal.
+\end{itemize}
+
+\subsection{Task 3: Implement ChainEntry (Entry Point)}
+
+ChainEntry initiates the chain:
+
+\begin{itemize}
+    \item State: \texttt{nextLink}, \texttt{owner}, \texttt{chainCounter},
+          \texttt{receipts} mapping.
+    \item \texttt{startChain(bytes)}: increment counter, store receipt, emit
+          \texttt{ChainStarted} and \texttt{EntryExecuted}, call
+          \texttt{IChainLink(nextLink).processAndForward(...)}.
+    \item Require \texttt{nextLink != address(0)} and non-empty data.
+\end{itemize}
+
+\subsection{Task 4: Deploy and Wire}
+
+Follow the deployment order (reverse dependency):
+
+\begin{enumerate}
+    \item Deploy \texttt{ChainTerminal} $\to$ copy address T
+    \item Deploy \texttt{ChainLink} with \texttt{stepNumber = 1}
+          $\to$ call \texttt{setNextLink(T)} $\to$ copy address L
+    \item Deploy \texttt{ChainEntry} $\to$ call \texttt{setNextLink(L)} $\to$ copy address E
+    \item On \texttt{ChainLink}: call \texttt{setPrevLink(E)}
+    \item On \texttt{ChainTerminal}: call \texttt{setPrevLink(L)}
+\end{enumerate}
+
+\subsection{Bonus: N-Link Chain}
+
+For extra credit, add a second ChainLink:
+
+\begin{enumerate}
+    \item Deploy a second \texttt{ChainTerminal}
+    \item Deploy \texttt{ChainLink(step=2)} $\to$ \texttt{setNextLink(Terminal)}
+    \item Modify the existing \texttt{ChainLink(step=1)}: \texttt{setNextLink(Link2)}
+    \item Wire: \texttt{Link2.setPrevLink(Link1)}, \texttt{Terminal.setPrevLink(Link2)}
+    \item The event order becomes:
+          \texttt{ChainStarted $\to$ EntryExecuted $\to$ LinkExecuted(1) $\to$ LinkExecuted(2) $\to$ FinalReceived $\to$ ChainCompleted}
+    \item The stored data will be \texttt{[VALIDATED][VALIDATED]original}
+\end{enumerate}
+
+\subsection{Task 5: Execute and Verify}
+
+\begin{enumerate}
+    \item Call \texttt{ChainEntry.startChain("0x48656c6c6f")} (hex for "Hello")
+    \item Check the transaction log for all 5 events in order
+    \item Call \texttt{ChainTerminal.getRecord(1)} to verify the stored data
+    \item The stored data should start with \texttt{[VALIDATED]}
+\end{enumerate}
+
+\section{Polkadot Lab (ink! 5.0)}
+
+\subsection{Setup}
+
+\begin{enumerate}
+    \item Install Rust nightly:
+    \begin{verbatim}
+rustup install nightly
+rustup default nightly
+\end{verbatim}
+    \item Install \texttt{cargo-contract}:
+    \begin{verbatim}
+cargo install cargo-contract --force
+\end{verbatim}
+    \item Install and run a local contracts node:
+    \begin{verbatim}
+cargo install contracts-node --git \
+    https://github.com/paritytech/substrate-contracts-node.git
+substrate-contracts-node --dev --tmp
+\end{verbatim}
+    \item Open \url{https://contracts-ui.substrate.io/} and connect to
+          \texttt{ws://127.0.0.1:9944}
+\end{enumerate}
+
+\subsection{Task 6: Implement ChainTerminal (ink!)}
+
+Create \texttt{polkadot/contracts/chain\_terminal/} with:
+
+\begin{itemize}
+    \item \texttt{\#[ink(storage)]} struct with: \texttt{prev\_link}, \texttt{owner},
+          \texttt{record\_count}, \texttt{records: Mapping<u32, FinalRecord>}.
+    \item \texttt{FinalRecord} struct with: \texttt{chain\_id}, \texttt{data},
+          \texttt{data\_hash}, \texttt{timestamp}, \texttt{exists}.
+    \item Events: \texttt{FinalReceived}, \texttt{ChainCompleted}.
+    \item \texttt{receive\_final(chain\_id, data)} --- only \texttt{prev\_link} can call.
+          Use \texttt{self.env().hash\_bytes::<ink::H256>(\&data)} for the hash.
+    \item \texttt{set\_prev\_link(address)} --- only owner.
+\end{itemize}
+
+\subsection{Task 7: Implement ChainLink (ink!)}
+
+Create \texttt{chain\_link/} with:
+
+\begin{itemize}
+    \item Constructor: \texttt{new(step\_number: u32)}.
+    \item Access control: \texttt{assert\_eq!(caller, prev\_link)}.
+    \item Both \texttt{process\_and\_forward} and \texttt{receive\_final} serve
+          as entry points (so the previous link can call either).
+    \item Cross-contract forward using \texttt{build\_call}:
+\begin{lstlisting}[style=rust]
+build_call::<DefaultEnvironment>()
+    .call(next_link)
+    .exec_input(
+        ExecutionInput::new(
+            Selector::new(ink::selector_bytes!("receive_final"))
+        )
+        .push_arg(chain_id)
+        .push_arg(transformed_data),
+    )
+    .returns::<bool>()
+    .invoke()
+\end{lstlisting}
+\end{itemize}
+
+\subsection{Task 8: Implement ChainEntry (ink!)}
+
+Create \texttt{chain\_entry/} with:
+
+\begin{itemize}
+    \item Counter-based \texttt{chain\_counter} incremented on each call.
+    \item Store \texttt{ChainReceipt} before forwarding.
+    \item Cross-contract call to Link using \texttt{build\_call}
+          with the \texttt{process\_and\_forward} selector.
+    \item Update receipt to \texttt{completed = true} after successful call.
+\end{itemize}
+
+\subsection{Task 9: Deploy and Wire (Contracts UI)}
+
+Same order as Ethereum:
+
+\begin{enumerate}
+    \item Build each contract: \texttt{cargo contract build --release}
+    \item Upload \& instantiate ChainTerminal
+    \item Upload \& instantiate ChainLink(step=1)
+          $\to$ call \texttt{setNextLink(terminalAddr)}
+    \item Upload \& instantiate ChainEntry
+          $\to$ call \texttt{setNextLink(linkAddr)}
+    \item On ChainLink: call \texttt{setPrevLink(entryAddr)}
+    \item On ChainTerminal: call \texttt{setPrevLink(linkAddr)}
+    \item Call \texttt{ChainEntry.startChain("0x48656c6c6f")}
+\end{enumerate}
+
+\section{Submission Requirements}
+
+Your submission must include:
+
+\subsection{Ethereum (50\% of Grade)}
+\begin{itemize}
+    \item \texttt{ChainEntry.sol}, \texttt{ChainLink.sol}, \texttt{ChainTerminal.sol}
+    \item All three files in a folder named \texttt{YourName-eth/}
+\end{itemize}
+
+\subsection{Polkadot (50\% of Grade)}
+\begin{itemize}
+    \item \texttt{chain\_entry/lib.rs}, \texttt{chain\_link/lib.rs}, \texttt{chain\_terminal/lib.rs}
+    \item All three files in a folder named \texttt{YourName-polkadot/}
+\end{itemize}
+
+\subsection{Grading Rubric}
+
+\begin{itemize}
+    \item \textbf{Compilation (20\%)}: Contracts compile without errors.
+    \item \textbf{Deployment (30\%)}: All three contracts deploy and wire correctly.
+    \item \textbf{Event Chain (30\%)}: Events emitted in correct order:
+          \texttt{ChainStarted $\to$ EntryExecuted $\to$ LinkExecuted $\to$ FinalReceived $\to$ ChainCompleted}.
+    \item \textbf{Final State (20\%)}: ChainTerminal stores the record with correct
+          \texttt{[VALIDATED]} prefix.
+\end{itemize}
+
+Passing threshold: 70\%
+
+\section{Troubleshooting}
+
+\begin{itemize}
+    \item \textbf{Compilation errors}: Check Solidity version (0.8.24),
+          import paths, and interface function signatures.
+    \item \textbf{"NextLink not set"}: Did you call \texttt{setNextLink} on ChainEntry?
+    \item \textbf{"Only prevLink can call this"}: Did you call \texttt{setPrevLink}
+          on the ChainLink (set to Entry's address)?
+    \item \textbf{"Only prevLink can call this" on Terminal}: Did you call
+          \texttt{setPrevLink} on ChainTerminal (set to Link's address)?
+    \item \textbf{Missing events}: Check that each function calls \texttt{emit EventName}.
+    \item \textbf{ink! build fails}: Ensure you're using Rust nightly and
+          the latest \texttt{cargo-contract}.
+    \item \textbf{Cross-contract call fails}: Verify the downstream contract's
+          address and function selector. The forwarding uses \texttt{receiveFinal}
+          as the uniform selector.
+    \item \textbf{Chain forwarding failed}: The nextLink address may be wrong
+          or the downstream contract's \texttt{receiveFinal} reverted.
+\end{itemize}
+
+\section{Reference Materials}
+
+\begin{itemize}
+    \item Solidity Documentation: \url{https://docs.soliditylang.org/}
+    \item Remix IDE: \url{https://remix.ethereum.org/}
+    \item ink! Documentation: \url{https://use.ink/}
+    \item Contracts UI: \url{https://contracts-ui.substrate.io/}
+    \item TON Comparison (provided separately)
+    \item Etherscan API: \url{https://docs.etherscan.io/api-endpoints/logs}
+    \item Subscan API: \url{https://docs.api.subscan.io/}
+\end{itemize}
+
+\vspace{1cm}
+\begin{center}
+\fbox{\parbox{0.9\textwidth}{
+\textbf{Good luck!} Remember that the chain must produce all 5 events in
+exact order for the grader to give full credit. Test your chain by calling
+\texttt{startChain} and checking the full transaction receipt before submitting.
+For bonus credit, try adding a second ChainLink to test the N-link pattern.
+}}
+\end{center}
+
+\end{document}

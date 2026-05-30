@@ -1,0 +1,67 @@
+@startuml GenericChain_Flow
+!theme plain
+
+title Generic Chain of Contracts — Entry → Link → ... → Terminal
+
+actor User as U
+participant ChainEntry as E
+participant "ChainLink(1)" as L1
+participant "...\nChainLink(N)" as LM
+participant ChainTerminal as T
+
+== 1. Initiation ==
+U -> E: startChain(data)
+activate E
+E -> E: chainCounter++\nstore receipt
+E -> E: emit ChainStarted
+E -> E: emit EntryExecuted
+
+== 2. Forward through N Links ==
+E -> L1: processAndForward(chainId, data)
+activate L1
+L1 -> L1: validate data (non-empty, <=1024 bytes)
+L1 -> L1: prepend [VALIDATED]
+L1 -> L1: emit LinkExecuted
+
+L1 -> LM: receiveFinal(chainId, transformedData)
+activate LM
+LM -> LM: validate & transform
+LM -> LM: emit LinkExecuted
+
+== 3. Terminal Reception ==
+LM -> T: receiveFinal(chainId, finalData)
+activate T
+T -> T: store FinalRecord\n(hash via keccak256/blake2b)
+T -> T: emit FinalReceived
+T -> T: emit ChainCompleted
+T --> LM: return true
+deactivate T
+
+LM --> L1: return true
+deactivate LM
+
+L1 --> E: return true
+deactivate L1
+
+== 4. Completion ==
+E -> E: mark receipt completed
+E -> E: return chainId
+deactivate E
+
+note right of U
+  Expected events (N-link chain):
+  1. ChainStarted
+  2. EntryExecuted
+  3. LinkExecuted (1)
+  4. ...
+  5. LinkExecuted (N)
+  6. FinalReceived
+  7. ChainCompleted
+
+  Default lab (1 link):
+  ChainStarted → EntryExecuted
+  → LinkExecuted → FinalReceived
+  → ChainCompleted
+end note
+
+@enduml

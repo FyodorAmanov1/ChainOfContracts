@@ -1,0 +1,90 @@
+\documentclass[11pt,a4paper]{article}
+
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage{geometry}
+\geometry{margin=2.5cm}
+\usepackage{graphicx}
+\usepackage{hyperref}
+\usepackage{listings}
+\usepackage{xcolor}
+\usepackage{booktabs}
+\usepackage{biblatex}
+\usepackage{enumitem}
+
+\addbibresource{references.bib}
+
+% Listing styles
+\lstdefinestyle{solidity}{
+    language=C++,
+    basicstyle=\footnotesize\ttfamily,
+    keywordstyle=\color{blue},
+    commentstyle=\color{gray},
+    stringstyle=\color{green!50!black},
+    numbers=left,
+    numberstyle=\tiny,
+    frame=single,
+    breaklines=true,
+    captionpos=b,
+}
+
+\lstdefinestyle{rust}{
+    language=Rust,
+    basicstyle=\footnotesize\ttfamily,
+    keywordstyle=\color{purple},
+    commentstyle=\color{gray},
+    stringstyle=\color{brown},
+    numbers=left,
+    numberstyle=\tiny,
+    frame=single,
+    breaklines=true,
+    captionpos=b,
+}
+
+\lstdefinestyle{func}{
+    language=C,
+    basicstyle=\footnotesize\ttfamily,
+    keywordstyle=\color{teal},
+    commentstyle=\color{gray},
+    stringstyle=\color{magenta},
+    numbers=left,
+    numberstyle=\tiny,
+    frame=single,
+    breaklines=true,
+    captionpos=b,
+}
+
+\title{Chain of Contracts: \\ Ethereum, Polkadot, and TON \\\large A Comparative Analysis}
+\author{Blockchain Systems Lab --- ChainOfContractsLab}
+\date{\today}
+
+\begin{document}
+
+\maketitle
+\thispagestyle{empty}
+
+\begin{abstract}
+This document provides a comparative analysis of smart contract platforms for
+implementing the ``chain of contracts'' pattern --- a design where ContractA
+calls ContractB, which calls ContractC in sequence. We analyze three
+fundamentally different platforms: Ethereum (synchronous EVM with account
+model), Polkadot (synchronous ink! with weight model), and TON (asynchronous
+actor model with TVM). For each platform, we examine the execution model,
+gas/fee structure, security properties, programming language, and practical
+trade-offs. This analysis accompanies the hands-on lab where students implement
+the pattern on Ethereum and Polkadot.
+\end{abstract}
+
+\tableofcontents
+\newpage
+
+\input{sections/01-async-vs-sync}
+\input{sections/02-gas-model}
+\input{sections/03-actor-vs-account}
+\input{sections/04-language-comparison}
+\input{sections/05-practical-tradeoffs}
+
+\newpage
+\printbibliography
+
+\end{document}

@@ -1,0 +1,147 @@
+\section{Language Comparison: Solidity vs ink! vs FunC}
+
+\subsection{Ethereum: Solidity}
+
+Solidity is the dominant smart contract language for EVM-compatible chains. It
+is a high-level, curly-bracket language influenced by C++, Python, and
+JavaScript.
+
+\begin{lstlisting}[language=Solidity, caption=Chain forwarder in Solidity, label=lst:solidity]
+function validateAndForward(
+    uint256 chainId,
+    bytes calldata data
+) external onlyContractA returns (bool) {
+    bytes memory transformed = abi.encodePacked(
+        "[VALIDATED]", data
+    );
+    emit MessageValidated(chainId, true, transformed);
+    return IContractC(contractC).receiveFinal(
+        chainId, transformed
+    );
+}
+\end{lstlisting}
+
+Key traits:
+\begin{itemize}
+    \item \textbf{Familiar syntax}: Low barrier for students with C/Java background.
+    \item \textbf{Mature ecosystem}: Hardhat, Foundry, Remix -- extensive tooling.
+    \item \textbf{Interface-based composition}: Cross-contract calls use interface types.
+    \item \textbf{Gas-aware design}: Students must optimize storage and computation.
+\end{itemize}
+
+\subsection{Polkadot: ink! 5.0}
+
+ink! is a Rust-based eDSL (embedded Domain-Specific Language) for WebAssembly
+smart contracts on Substrate-based chains.
+
+\begin{lstlisting}[language=Rust, caption=Chain forwarder in ink! 5.0, label=lst:ink]
+fn validate_and_forward(
+    &mut self,
+    chain_id: u32,
+    data: Vec<u8>,
+) -> bool {
+    let mut transformed = b"[VALIDATED]".to_vec();
+    transformed.extend_from_slice(&data);
+
+    self.env().emit_event(MessageValidated {
+        chain_id, valid: true,
+        transformed_data: transformed.clone(),
+    });
+
+    build_call::<DefaultEnvironment>()
+        .call(self.contract_c.unwrap())
+        .exec_input(
+            ExecutionInput::new(
+                Selector::new(
+                    ink::selector_bytes!("receive_final")
+                )
+            )
+            .push_arg(chain_id)
+            .push_arg(transformed),
+        )
+        .returns::<bool>()
+        .invoke()
+}
+\end{lstlisting}
+
+Key traits:
+\begin{itemize}
+    \item \textbf{Rust safety}: Ownership, borrowing, and type safety at compile time.
+    \item \textbf{Macro-based}: \texttt{\#[ink(storage)]}, \texttt{\#[ink(message)]} annotations.
+    \item \textbf{No standard library}: \texttt{no\_std} environment -- no heap by default.
+    \item \textbf{Steeper learning curve}: Students need Rust familiarity.
+\end{itemize}
+
+\subsection{TON: FunC}
+
+FunC is a low-level language for TON smart contracts. It compiles to Fift
+assembler and then to TVM bytecode.
+
+\begin{lstlisting}[language=C, caption=Simple forwarder in FunC, label=lst:func]
+() recv_internal(int msg_value, cell in_msg_cell, slice in_msg_body) impure {
+    ;; Parse incoming message
+    slice ds = in_msg_body;
+    int op = ds~load_uint(32);
+    int chain_id = ds~load_uint(32);
+    slice data = ds~load_dict_slice();
+
+    ;; Validate (non-empty check)
+    throw_if(1001, slice_empty?(data));
+
+    ;; Build forward message to ContractB
+    cell forward_msg = begin_cell()
+        .store_uint(0xba5eba11, 32)
+        .store_uint(chain_id, 32)
+        .store_slice(data)
+        .end_cell();
+
+    ;; Send with bounce flag and remaining balance
+    send_raw_message(forward_msg, 64);
+
+    ;; Emit event via storage
+    cell event = begin_cell()
+        .store_uint(0xcafe, 16)
+        .store_uint(chain_id, 32)
+        .end_cell();
+    set_data(begin_cell().store_ref(event).end_cell());
+}
+\end{lstlisting}
+
+Key traits:
+\begin{itemize}
+    \item \textbf{Stack-based}: FunC operates on a stack machine (TVM).
+    \item \textbf{Assembly-like}: Manual cell manipulation and gas management.
+    \item \textbf{Low-level control}: Full control over message layout and fees.
+    \item \textbf{Steepest learning curve}: Most challenging for students.
+\end{itemize}
+
+\subsection{Comparative Analysis for Education}
+
+\begin{table}[h]
+\centering
+\begin{tabular}{|l|c|c|c|}
+\hline
+\textbf{Criterion} & \textbf{Solidity} & \textbf{ink! 5.0} & \textbf{FunC} \\
+\hline
+Learning curve & Low & Medium & High \\
+Type safety & Low (runtime) & High (compile-time) & Low \\
+Tooling maturity & Excellent & Good & Emerging \\
+Cross-contract calls & Trivial & Moderate & Complex \\
+Debugging & Hardhat/Foundry & Contracts UI & TON CLI \\
+Gas estimation & Built-in & Weight system & Manual \\
+\hline
+\end{tabular}
+\caption{Language comparison for smart contract education}
+\end{table}
+
+For a blockchain course, the recommended progression is:
+\begin{enumerate}
+    \item Start with Solidity (familiar syntax, abundant resources).
+    \item Move to ink! (safety lessons from Rust, different cross-contract API).
+    \item End with FunC (understanding low-level execution, message cells,
+          and the actor model at the VM level).
+\end{enumerate}
+
+This progression takes students from high-level abstraction to low-level control,
+building a complete mental model of how different blockchain VMs approach the
+same problem.

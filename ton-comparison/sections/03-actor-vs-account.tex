@@ -1,0 +1,89 @@
+\section{Actor Model vs Account Model}
+
+\subsection{Ethereum and Polkadot: Shared Global State}
+
+Both Ethereum and Polkadot use an \textbf{account model} where smart contracts
+operate on shared, globally-accessible state. In Ethereum, any contract can read
+the storage of any other contract (via \texttt{SLOAD}). In Polkadot, ink!
+contracts are more isolated by default, but the underlying execution environment
+is still a shared state machine.
+
+Key characteristics:
+\begin{itemize}
+    \item \textbf{Reentrancy is possible}: Because the call stack is synchronous,
+          a contract can be called again while it is still executing (reentrancy).
+    \item \textbf{Global composability}: ContractA can directly call any function
+          on ContractB without going through a message queue.
+    \item \textbf{MEV (Maximal Extractable Value)}: The shared mempool allows
+          validators to reorder transactions, potentially extracting value from
+          the chain.
+    \item \textbf{Deterministic execution}: All nodes replay the same sequence
+          of operations and converge on the same state.
+\end{itemize}
+
+\subsection{TON: The Actor Model}
+
+TON implements the \textbf{Actor model}, originally from distributed computing
+(Hewitt, Bishop, and Steiger, 1973). Each smart contract is an \textbf{actor}
+with:
+
+\begin{itemize}
+    \item \textbf{Exclusive private state}: No other contract can read or modify
+          a contract's storage directly. State is only accessible through the
+          contract's own message handlers.
+    \item \textbf{Message-based communication}: Actors communicate exclusively
+          via asynchronous messages. There are no direct function calls across
+          contract boundaries.
+    \item \textbf{No reentrancy}: Since there is no synchronous call stack,
+          reentrancy is structurally impossible. A contract cannot be interrupted
+          mid-execution by another call.
+    \item \textbf{Each actor processes one message at a time}: The TON runtime
+          ensures serial message processing per contract, eliminating race
+          conditions within a single actor.
+\end{itemize}
+
+\subsection{Security Implications for the Chain Pattern}
+
+\begin{table}[h]
+\centering
+\begin{tabular}{|l|c|c|c|}
+\hline
+\textbf{Security Property} & \textbf{Ethereum} & \textbf{Polkadot} & \textbf{TON} \\
+\hline
+Reentrancy risk & High & Medium & None \\
+Cross-contract read & Yes & Limited & No \\
+Atomic execution & Yes & Yes & No \\
+Message ordering & N/A & N/A & Non-deterministic \\
+Parallelism & None & None & Shard-level \\
+\hline
+\end{tabular}
+\caption{Security model comparison}
+\end{table}
+
+For our A $\to$ B $\to$ C chain pattern:
+
+\begin{itemize}
+    \item \textbf{Ethereum}: The chain is atomic and synchronous, but requires
+          reentrancy guards (\texttt{ReentrancyGuard} or checks-effects-interactions).
+          A malicious ContractB could attempt to re-enter ContractA during the call.
+    \item \textbf{Polkadot}: Similar security profile to Ethereum, but ink!'s
+          type system and the \texttt{build\_call} API make accidental reentrancy
+          less likely.
+    \item \textbf{TON}: Reentrancy is impossible, but the chain is non-atomic.
+          The professor's grader must check for bounce messages or confirmation
+          receipts. If ContractC receives the message but ContractB crashes before
+          returning a confirmation, ContractA never knows the chain completed.
+\end{itemize}
+
+\subsection{State Isolation and Composability Trade-off}
+
+TON's actor model provides stronger security guarantees (no reentrancy, no
+unauthorized state reads) at the cost of composability. In Ethereum, composing
+contracts (using the output of one contract as input to another in the same
+transaction) is seamless. In TON, such composition requires multi-step
+asynchronous protocols, which are more complex to design and verify.
+
+For educational purposes, this trade-off is instructive: students should
+understand that stronger isolation means weaker composition, and that the choice
+of platform determines which properties are guaranteed by the runtime versus
+enforced by the developer.

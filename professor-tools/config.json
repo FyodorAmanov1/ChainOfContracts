@@ -1,0 +1,46 @@
+{
+  "ethereum": {
+    "rpcUrl": "http://127.0.0.1:8545",
+    "network": "hardhat",
+    "graderPath": "../ethereum/grader",
+    "timeoutMs": 120000,
+    "etherscan": {
+      "apiKeyEnv": "ETHERSCAN_API_KEY",
+      "defaultChainId": 11155111,
+      "explorerUrl": "https://api-sepolia.etherscan.io"
+    }
+  },
+  "polkadot": {
+    "rpcUrl": "ws://127.0.0.1:9944",
+    "network": "dev",
+    "graderBinary": "../polkadot/grader/target/release/polkadot-grader",
+    "timeoutMs": 180000,
+    "subscan": {
+      "apiKeyEnv": "SUBSCAN_API_KEY",
+      "defaultNetwork": "westend",
+      "baseUrl": "https://westend.api.subscan.io"
+    }
+  },
+  "grading": {
+    "passThreshold": 70,
+    "eventOrderRequired": true,
+    "parallelGrading": false,
+    "studentDir": "./sample-submissions"
+  },
+  "output": {
+    "dir": "./output",
+    "format": "json",
+    "generateCsvSummary": true
+  },
+  "notifications": {
+    "emailOnComplete": false,
+    "emailAddress": ""
+  },
+  "labInfo": {
+    "name": "ChainOfContractsLab",
+    "semester": "Spring 2026",
+    "maxScore": 100,
+    "ethereumWeight": 0.5,
+    "polkadotWeight": 0.5
+  }
+}

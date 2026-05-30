@@ -1,0 +1,14 @@
+{
+  "name": "chain-of-contracts-professor-tools",
+  "version": "1.0.0",
+  "description": "Master grading orchestrator for Chain of Contracts lab",
+  "scripts": {
+    "grade": "node run-grading.js",
+    "grade:eth": "node run-grading.js --ethereum",
+    "grade:polkadot": "node run-grading.js --polkadot",
+    "grade:student": "node run-grading.js --student <name>",
+    "grade:help": "node run-grading.js --help",
+    "setup": "npm install"
+  },
+  "dependencies": {}
+}

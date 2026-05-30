@@ -1,0 +1,76 @@
+;; Simple Forwarder Contract for TON
+;; Implements a minimal A->B forward in the chain-of-contracts pattern
+;;
+;; Compile: func -o forwarder.fif -SPA forwarder.fc
+;; Deploy: fift -s deploy.fif
+
+;; Constants
+int OP_FORWARD = 0xba5eba11;
+int OP_BOUNCE = 0xdead;
+
+;; Message schema:
+;;   op:uint32 chain_id:uint32 data:remaining
+
+() recv_internal(int msg_value, cell in_msg_cell, slice in_msg_body) impure {
+    ;; Ignore external messages
+    if (in_msg_body.slice_empty?()) { return (); }
+
+    int op = in_msg_body~load_uint(32);
+
+    if (op == OP_FORWARD) {
+        (int chain_id, slice data) = parse_forward_msg(in_msg_body);
+        process_and_forward(chain_id, data, msg_value);
+    } elseif (op == OP_BOUNCE) {
+        handle_bounce(in_msg_body);
+    } else {
+        throw(1000); ;; unknown operation
+    }
+}
+
+() parse_forward_msg(slice body) -> (int chain_id, slice data) {
+    chain_id = body~load_uint(32);
+    data = body; ;; remaining is the data payload
+}
+
+() process_and_forward(int chain_id, slice data, int msg_value) impure {
+    ;; Validate: data must not be empty
+    throw_if(1001, data~slice_empty?());
+
+    ;; Calculate forwarding value (reserve 0.1 TON for this contract)
+    int forward_value = msg_value - 100000000; ;; 0.1 TON reserved
+
+    if (forward_value <= 0) {
+        throw(1002); ;; insufficient value to forward
+    }
+
+    ;; Build and send forward message to ContractB
+    cell forward_msg = begin_cell()
+        .store_uint(OP_FORWARD, 32)      ;; op code
+        .store_uint(chain_id, 32)        ;; chain id
+        .store_slice(data)               ;; raw data
+        .end_cell();
+
+    ;; Send with mode 64 (carry all remaining value)
+    ;; Bounce flag is set so failures return a bounce message
+    send_raw_message(forward_msg, 64 + 1); ;; mode = 64 + 1 (bounce on error)
+}
+
+() handle_bounce(slice bounced_body) impure {
+    ;; Bounce from ContractB means B failed
+    ;; Log the failure (in production, emit an event or alert)
+    int chain_id = bounced_body~load_uint(32);
+
+    ;; Could store failed chain for retry:
+    ;; set_data(begin_cell()
+    ;;     .store_uint(chain_id, 32)
+    ;;     .store_uint(now(), 32)  ;; failure timestamp
+    ;;     .end_cell());
+}
+
+;; Helper: get current time (from masterchain)
+int now() impure {
+    var ts = begin_cell()
+        .store_uint(now, 64)
+        .end_cell();
+    return ts~load_uint(64);
+}

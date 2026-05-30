@@ -1,0 +1,81 @@
+\section{Gas and Fee Model Comparison}
+
+\subsection{Ethereum: Sender-Pays Model}
+
+In Ethereum, the transaction \textbf{sender} pays for all computation, storage,
+and cross-contract calls in a single upfront gas fee. The entire call chain
+(A $\to$ B $\to$ C) consumes gas from the same budget:
+
+\begin{itemize}
+    \item Gas is purchased upfront via \texttt{gasLimit} $\times$ \texttt{gasPrice}.
+    \item Unused gas is refunded to the sender.
+    \item If gas runs out mid-chain, the entire chain reverts (atomicity).
+    \item \texttt{EIP-1559} introduced a base fee that is burned and a priority
+          fee (tip) for validators.
+\end{itemize}
+
+\subsection{Polkadot: Weight-Based Model}
+
+Polkadot does not use gas in the Ethereum sense. Instead, it uses a
+\textbf{weight} system:
+
+\begin{itemize}
+    \item Each extrinsic declares a \texttt{weight} (computation + storage cost).
+    \item Weight is deducted from a per-block weight limit.
+    \item Contracts pay for their own execution from their \textbf{own balance},
+          not the caller's.
+    \item Cross-contract calls can specify separate \texttt{gas\_limit} values
+          to prevent one contract from starving another.
+    \item Storage is charged via a \textbf{deposit} model: contracts lock a
+          refundable deposit for each storage item.
+\end{itemize}
+
+For the A $\to$ B $\to$ C chain, each intermediate contract must have sufficient
+balance to cover its own execution. ContractA attaches enough gas to cover B's
+execution, and B attaches enough to cover C's.
+
+\subsection{TON: Separate Balances and Rent}
+
+TON's fee model introduces several unique features that significantly impact
+chain-of-contracts design:
+
+\begin{itemize}
+    \item \textbf{Each contract has its own balance.} There is no "sender pays
+          all" model. ContractA must attach enough TON to its outbound message
+          to cover ContractB's execution. This is called the \texttt{gram}
+          attached to the message.
+    \item \textbf{Forward fees}: Each hop in the chain incurs a forwarding fee
+          paid by the sender of that message. ContractA pays to reach B, B pays
+          to reach C.
+    \item \textbf{Storage rent}: TON contracts pay rent for their persistent
+          state. A contract with insufficient balance may be frozen or deleted.
+          Long-running chains must account for ongoing storage costs.
+    \item \textbf{Action fees}: Each outbound action (sending a message) costs
+          fees based on the message size and destination shard.
+    \item \textbf{No automatic refunds}: Unlike Ethereum, there is no gas refund
+          mechanism. Unused attached value stays with the recipient contract.
+\end{itemize}
+
+\subsection{Practical Implications for the Chain Pattern}
+
+\begin{table}[h]
+\centering
+\begin{tabular}{|l|c|c|c|}
+\hline
+\textbf{Aspect} & \textbf{Ethereum} & \textbf{Polkadot} & \textbf{TON} \\
+\hline
+Who pays? & Sender & Each contract & Message sender at each hop \\
+Chain failure cost & Full (revert) & Partial (weight) & Accumulated (fees spent) \\
+Storage cost & Per byte (one-time) & Deposit (refundable) & Rent (ongoing) \\
+Refund mechanism & Yes & No & No \\
+\hline
+\end{tabular}
+\caption{Gas/fee model comparison for A$\to$B$\to$C}
+\end{table}
+
+The key takeaway for students: in TON, each hop in the chain is an independent
+economic transaction. Attaching insufficient value to a message will cause the
+chain to break mid-way, and unlike Ethereum, there is no automatic rollback.
+This makes TON's model more complex but also more flexible -- intermediate
+contracts are not dependent on the sender's generosity for their execution
+budget.

@@ -1,0 +1,79 @@
+\section{Asynchronous vs Synchronous Execution Models}
+
+\subsection{Ethereum: Synchronous EVM Calls}
+
+Ethereum smart contracts execute within a synchronous, single-threaded environment.
+When ContractA calls ContractB within the same transaction, the EVM pauses A's
+execution, runs B to completion, and returns control to A. This model provides
+\textbf{atomicity}: if any step in the chain reverts, the entire transaction
+reverts, and all state changes are discarded.
+
+\begin{itemize}
+    \item \textbf{Deterministic ordering}: ContractB runs before ContractC,
+          and the order is guaranteed by the EVM call stack.
+    \item \textbf{Atomic rollback}: A failure in ContractC reverts B and A.
+    \item \textbf{Reentrancy risk}: Synchronous calls create reentrancy vectors
+          (e.g., the 2016 DAO hack), requiring careful use of checks-effects-interactions.
+\end{itemize}
+
+\subsection{Polkadot: Synchronous Cross-Contract Calls (ink! 5.0)}
+
+ink! contracts on Polkadot also execute synchronously within a single dispatch.
+When ContractA calls ContractB via \texttt{build\_call}, execution blocks until
+B returns. The model closely mirrors Ethereum's in terms of atomicity:
+
+\begin{itemize}
+    \item \textbf{Same-block execution}: A $\to$ B $\to$ C all occur in one block.
+    \item \textbf{Gas limits per call}: Each cross-contract call can specify its
+          own gas limit, preventing one contract from exhausting another's budget.
+    \item \textbf{Weight-based pricing}: Polkadot uses a weight system rather
+          than gas, but the synchronous semantics are identical for the caller.
+\end{itemize}
+
+\subsection{TON: Asynchronous Message Passing}
+
+TON fundamentally differs from Ethereum and Polkadot by adopting an
+\textbf{asynchronous actor model}. Smart contracts (actors) communicate
+exclusively via messages. When ContractA sends a message to ContractB:
+
+\begin{itemize}
+    \item ContractA does \textbf{not} wait for ContractB to process the message.
+    \item The message is placed in a queue and may be processed in a different
+          shard, by a different validator, in a different block.
+    \item ContractA's execution completes immediately; there is no automatic
+          rollback if ContractB fails.
+    \item Error handling requires explicit \textbf{bounce messages}: if B fails,
+          it can send a bounce message back to A, but A must handle it explicitly.
+\end{itemize}
+
+\subsection{Impact on the Chain-of-Contracts Pattern}
+
+The choice of execution model directly affects how the A $\to$ B $\to$ C chain
+must be designed:
+
+\begin{table}[h]
+\centering
+\begin{tabular}{|l|c|c|c|}
+\hline
+\textbf{Property} & \textbf{Ethereum} & \textbf{Polkadot} & \textbf{TON} \\
+\hline
+Atomicity & Full & Full & None (by default) \\
+Error propagation & Automatic revert & Automatic revert & Manual (bounce) \\
+Call ordering & Guaranteed & Guaranteed & Not guaranteed \\
+Shard-crossing & N/A & N/A & Required \\
+\hline
+\end{tabular}
+\caption{Comparison of execution models for A$\to$B$\to$C chain}
+\end{table}
+
+For TON, implementing a reliable chain-of-contracts requires:
+\begin{enumerate}
+    \item Sending the message from A to B with a bounce flag.
+    \item B sending its message to C (with B's remaining balance attached).
+    \item C sending a confirmation message back through B to A.
+    \item A implementing a timeout mechanism in case messages are lost.
+\end{enumerate}
+
+This increased complexity is the cost of TON's scalability advantages:
+asynchronous messages enable infinite sharding without cross-shard coordination
+overhead at execution time.

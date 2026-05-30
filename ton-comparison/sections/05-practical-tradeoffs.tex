@@ -1,0 +1,88 @@
+\section{Practical Trade-offs and Recommendations}
+
+\subsection{Decision Matrix}
+
+The following table summarizes the key differences across all three platforms
+for the chain-of-contracts pattern:
+
+\begin{table}[h]
+\centering
+\small
+\begin{tabular}{|l|c|c|c|}
+\hline
+\textbf{Factor} & \textbf{Ethereum} & \textbf{Polkadot} & \textbf{TON} \\
+\hline
+Atomic chain execution & Yes & Yes & No \\
+Reentrancy protection & Manual & Built-in (mostly) & Structural \\
+Cross-contract complexity & Low & Medium & High \\
+Event verification & Trivial & Moderate & Indirect \\
+Max sharding & None & Para-chain & Infinite \\
+User base & Largest & Growing & Niche \\
+Tooling maturity & Mature & Maturing & Early \\
+Gas model clarity & Simple & Moderate & Complex \\
+Storage cost model & One-time & Deposit & Rent \\
+\hline
+\end{tabular}
+\caption{Comprehensive comparison across platforms}
+\end{table}
+
+\subsection{When to Use Each Platform}
+
+\begin{itemize}
+    \item \textbf{Ethereum} is the best choice for:
+    \begin{itemize}
+        \item Rapid prototyping and student education.
+        \item Atomic chains where intermediate state must not be persisted on failure.
+        \item Applications requiring maximum developer tooling and community support.
+        \item DeFi protocols where synchronous composability is essential.
+    \end{itemize}
+
+    \item \textbf{Polkadot (ink!)} is the best choice for:
+    \begin{itemize}
+        \item Projects requiring cross-chain interoperability via XCM.
+        \item Applications needing formal verification (Rust's type system helps).
+        \item Teams already familiar with Rust.
+        \item Scenarios where upgradeable smart contracts (via \texttt{set\_code\_hash}) are needed.
+    \end{itemize}
+
+    \item \textbf{TON} is the best choice for:
+    \begin{itemize}
+        \item High-throughput applications serving millions of users.
+        \item Systems where sharding is required today, not as a future roadmap item.
+        \item Applications that can tolerate asynchronous message passing.
+        \item Projects that benefit from TON's native Telegram integration.
+    \end{itemize}
+\end{itemize}
+
+\subsection{Hybrid Approaches}
+
+For production systems, platforms can be combined:
+
+\begin{itemize}
+    \item \textbf{ETH + TON bridges}: Use Ethereum for the atomic chain core
+          and TON for high-volume message relaying to end users.
+    \item \textbf{Polkadot + TON}: Deploy the chain-of-contracts as a parachain
+          (synchronous, sovereign) and bridge messages to TON for distribution.
+    \item \textbf{TON with bounce guards}: Implement the A $\to$ B $\to$ C chain
+          in TON using bounce messages and confirmation timeouts, accepting
+          eventual consistency for scalability.
+\end{itemize}
+
+\subsection{Educational Recommendations}
+
+For a chain-of-contracts lab, we recommend:
+
+\begin{enumerate}
+    \item \textbf{Implement on Ethereum first} -- the synchronous model is
+          easier to understand and debug. Students can verify the chain with
+          a single transaction receipt.
+    \item \textbf{Port to Polkadot} -- demonstrates how the same pattern
+          translates to a different VM with stronger type safety and a
+          different cross-contract API.
+    \item \textbf{Analyze TON theoretically (this document)} -- understand
+          how the pattern must be redesigned for the actor model, without
+          requiring FunC proficiency.
+\end{enumerate}
+
+This three-step approach gives students both practical implementation skills
+and a theoretical framework for evaluating smart contract platforms.
