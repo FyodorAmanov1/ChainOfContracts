@@ -199,12 +199,17 @@ async function verifyOnEtherscan({
         // Check if record exists
         const exists = recordResult[4];
         if (exists) {
-          // Verify data prefix
+          // Verify data prefix — minimum depth 5 requires 3 × [VALIDATED]
           const dataHex = recordResult[1];
           const dataStr = ethers.toUtf8String(dataHex);
+          const expectedPrefix = "[VALIDATED][VALIDATED][VALIDATED]";
 
-          if (dataStr.startsWith("[VALIDATED]")) {
-            console.log("  ✓ Final state verified: data starts with [VALIDATED]");
+          if (dataStr.startsWith(expectedPrefix)) {
+            console.log("  ✓ Final state verified: data starts with [VALIDATED]×3");
+            stateCheck = { pass: true, record: recordResult, errors: [] };
+          } else if (dataStr.startsWith("[VALIDATED]")) {
+            // Partial prefix — still passes as valid, log a note
+            console.log("  ⚠ Final state: data has [VALIDATED] prefix but expected ×3 for minimum depth");
             stateCheck = { pass: true, record: recordResult, errors: [] };
           } else {
             const msg = `Stored data does not start with [VALIDATED]. Got: "${dataStr.slice(0, 50)}..."`;

@@ -3,11 +3,13 @@ use crate::deploy::ContractAddresses;
 use crate::reporter::PhaseResult;
 use anyhow::Result;
 
-/// Expected event order for a successful chain execution.
-/// Generic: Entry → Link → Terminal
+/// Expected event order for a minimum-depth chain (5 contracts: Entry + 3 Links + Terminal).
+/// Generic: Entry → Link(1) → Link(2) → Link(3) → Terminal
 const EXPECTED_EVENT_ORDER: &[&str] = &[
     "ChainStarted",
     "EntryExecuted",
+    "LinkExecuted",
+    "LinkExecuted",
     "LinkExecuted",
     "FinalReceived",
     "ChainCompleted",
@@ -86,11 +88,14 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_verify_correct_order() {
+    fn test_verify_correct_order_min_depth() {
+        // Minimum depth: 3 LinkExecuted events
         let events = vec![
             ChainEvent { name: "ChainStarted".into(), chain_id: Some(1), data: "".into() },
             ChainEvent { name: "EntryExecuted".into(), chain_id: Some(1), data: "".into() },
-            ChainEvent { name: "LinkExecuted".into(), chain_id: Some(1), data: "".into() },
+            ChainEvent { name: "LinkExecuted".into(), chain_id: Some(1), data: "link1".into() },
+            ChainEvent { name: "LinkExecuted".into(), chain_id: Some(1), data: "link2".into() },
+            ChainEvent { name: "LinkExecuted".into(), chain_id: Some(1), data: "link3".into() },
             ChainEvent { name: "FinalReceived".into(), chain_id: Some(1), data: "".into() },
             ChainEvent { name: "ChainCompleted".into(), chain_id: Some(1), data: "".into() },
         ];
@@ -117,13 +122,15 @@ mod tests {
     }
 
     #[test]
-    fn test_verify_multi_link_order() {
-        // Test an N=2 link chain: 6 events expected
+    fn test_verify_n_plus_link_order() {
+        // Test an N=4 link chain: more links than the minimum of 3
         let events = vec![
             ChainEvent { name: "ChainStarted".into(), chain_id: Some(1), data: "".into() },
             ChainEvent { name: "EntryExecuted".into(), chain_id: Some(1), data: "".into() },
             ChainEvent { name: "LinkExecuted".into(), chain_id: Some(1), data: "link1".into() },
             ChainEvent { name: "LinkExecuted".into(), chain_id: Some(1), data: "link2".into() },
+            ChainEvent { name: "LinkExecuted".into(), chain_id: Some(1), data: "link3".into() },
+            ChainEvent { name: "LinkExecuted".into(), chain_id: Some(1), data: "link4".into() },
             ChainEvent { name: "FinalReceived".into(), chain_id: Some(1), data: "".into() },
             ChainEvent { name: "ChainCompleted".into(), chain_id: Some(1), data: "".into() },
         ];

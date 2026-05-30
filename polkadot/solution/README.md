@@ -1,9 +1,9 @@
 # Polkadot Solution — Generic Chain of Contracts
 
-## Architecture
+## Architecture (Minimum Depth 5)
 
 ```
-User → ChainEntry → ChainLink(step=1) → ChainTerminal
+User → ChainEntry → ChainLink(step=1) → ChainLink(step=2) → ChainLink(step=3) → ChainTerminal
 ```
 
 ### Design Patterns
@@ -21,7 +21,7 @@ User → ChainEntry → ChainLink(step=1) → ChainTerminal
 | Aspect | v1.0 (contract_a/b/c) | v2.0 (Generic) |
 |--------|----------------------|----------------|
 | Traits | `IContractA/B/C` | `IChainEntry/Link/Terminal` |
-| Chain length | Fixed 3 | Arbitrary (N links) |
+| Min chain depth | Fixed 3 | 5 (Entry + 3 Links + Terminal) |
 | Forwarding | Named selectors per contract | Uniform `receive_final` selector |
 
 ### ink! vs Solidity Implementation Notes
@@ -33,19 +33,23 @@ User → ChainEntry → ChainLink(step=1) → ChainTerminal
 | Events | `emit EventName(args)` | `self.env().emit_event(EventName { ... })` |
 | Hashing | `keccak256(data)` | `self.env().hash_bytes::<ink::H256>(&data)` |
 
-### Deployment Order
+### Deployment Order (Minimum Depth 5)
 
 ```
-1. Build & deploy ChainTerminal      → T
-2. Build & deploy ChainLink(step=1)  → L (setNextLink=T)
-3. Build & deploy ChainEntry         → E (setNextLink=L)
-4. ChainLink.setPrevLink(E)
-5. ChainTerminal.setPrevLink(L)
-6. Entry.startChain(data)
+ 1. Build & deploy ChainTerminal       → T
+ 2. Build & deploy ChainLink(3)        → setNextLink(T)   → L₃
+ 3. Build & deploy ChainLink(2)        → setNextLink(L₃)  → L₂
+ 4. Build & deploy ChainLink(1)        → setNextLink(L₂)  → L₁
+ 5. Build & deploy ChainEntry          → setNextLink(L₁)  → E
+ 6. ChainLink(1).setPrevLink(E)
+ 7. ChainLink(2).setPrevLink(L₁)
+ 8. ChainLink(3).setPrevLink(L₂)
+ 9. ChainTerminal.setPrevLink(L₃)
+10. Entry.startChain(data)
 ```
 
-### Events (1-link chain)
+### Events (Minimum Depth — 3 Links)
 
 ```
-ChainStarted → EntryExecuted → LinkExecuted → FinalReceived → ChainCompleted
+ChainStarted → EntryExecuted → LinkExecuted → LinkExecuted → LinkExecuted → FinalReceived → ChainCompleted
 ```

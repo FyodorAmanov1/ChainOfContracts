@@ -1,9 +1,8 @@
 const { ethers } = require("ethers");
 
 /**
- * Expected event order for a generic chain of contracts.
- * For a 3-contract chain (Entry + 1 Link + Terminal):
- *   ChainStarted → EntryExecuted → LinkExecuted → FinalReceived → ChainCompleted
+ * Expected event order for the minimum-depth chain (5 contracts: Entry + 3 Links + Terminal).
+ *   ChainStarted → EntryExecuted → LinkExecuted → LinkExecuted → LinkExecuted → FinalReceived → ChainCompleted
  *
  * For an N-link chain:
  *   ChainStarted → EntryExecuted → LinkExecuted(1) → ... → LinkExecuted(N) → FinalReceived → ChainCompleted
@@ -11,6 +10,8 @@ const { ethers } = require("ethers");
 const EXPECTED_EVENT_ORDER = [
   "ChainStarted",
   "EntryExecuted",
+  "LinkExecuted",
+  "LinkExecuted",
   "LinkExecuted",
   "FinalReceived",
   "ChainCompleted",
@@ -65,7 +66,7 @@ function verifyEventOrder(logs, expectedOrder = EXPECTED_EVENT_ORDER) {
  * @param {string} expectedDataPrefix - Expected prefix in stored data (e.g. "[VALIDATED]")
  * @returns {{ pass: boolean, record: object|null, errors: string[] }}
  */
-async function verifyFinalState(chainTerminal, chainId, expectedDataPrefix = "[VALIDATED]") {
+async function verifyFinalState(chainTerminal, chainId, expectedDataPrefix = "[VALIDATED][VALIDATED][VALIDATED]") {
   const errors = [];
   let record = null;
 

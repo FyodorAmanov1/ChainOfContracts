@@ -40,21 +40,42 @@ substrate-contracts-node --dev --tmp
 6. No constructor arguments
 7. Set a name: "ChainTerminal"
 8. Click **Create** and sign the transaction
-9. Copy the deployed address
+9. Copy the deployed address (T)
 
-## Step 4: Upload and Instantiate — ChainLink
+## Step 4: Upload and Instantiate — ChainLink(3)
 
 1. Click **Add New Contract**
 2. Select `chain_link/target/ink/chain_link.contract`
-3. Click **Upload & Instantiate**
-4. Constructor: `new(step_number: u32)` — enter `1`
-5. Name: "ChainLink"
-6. Click **Create**
-7. After instantiation:
-   - Call `setNextLink` with ChainTerminal's address
-8. Copy ChainLink's address
+3. Constructor: `new(step_number: u32)` — enter `3`
+4. Name: "ChainLink(3)"
+5. Click **Create**
+6. After instantiation:
+   - Call `setNextLink` with ChainTerminal's address (T)
+7. Copy ChainLink(3)'s address (L₃)
 
-## Step 5: Upload and Instantiate — ChainEntry
+## Step 5: Upload and Instantiate — ChainLink(2)
+
+1. Click **Add New Contract**
+2. Select `chain_link/target/ink/chain_link.contract`
+3. Constructor: `new(step_number: u32)` — enter `2`
+4. Name: "ChainLink(2)"
+5. Click **Create**
+6. After instantiation:
+   - Call `setNextLink` with ChainLink(3)'s address (L₃)
+7. Copy ChainLink(2)'s address (L₂)
+
+## Step 6: Upload and Instantiate — ChainLink(1)
+
+1. Click **Add New Contract**
+2. Select `chain_link/target/ink/chain_link.contract`
+3. Constructor: `new(step_number: u32)` — enter `1`
+4. Name: "ChainLink(1)"
+5. Click **Create**
+6. After instantiation:
+   - Call `setNextLink` with ChainLink(2)'s address (L₂)
+7. Copy ChainLink(1)'s address (L₁)
+
+## Step 7: Upload and Instantiate — ChainEntry
 
 1. Click **Add New Contract**
 2. Select `chain_entry/target/ink/chain_entry.contract`
@@ -62,34 +83,38 @@ substrate-contracts-node --dev --tmp
 4. Name: "ChainEntry"
 5. Click **Create**
 6. After instantiation:
-   - Call `setNextLink` with ChainLink's address
+   - Call `setNextLink` with ChainLink(1)'s address (L₁)
 
-## Step 6: Wire Access Control
+## Step 8: Wire Access Control
 
-1. On ChainLink: call `setPrevLink` with ChainEntry's address
-2. On ChainTerminal: call `setPrevLink` with ChainLink's address
+1. On ChainLink(1): call `setPrevLink` with ChainEntry's address (E)
+2. On ChainLink(2): call `setPrevLink` with ChainLink(1)'s address (L₁)
+3. On ChainLink(3): call `setPrevLink` with ChainLink(2)'s address (L₂)
+4. On ChainTerminal: call `setPrevLink` with ChainLink(3)'s address (L₃)
 
-## Step 7: Run the Chain
+## Step 9: Run the Chain
 
 1. Select ChainEntry in the UI
 2. Call `startChain` with any hex data (e.g., `0x48656c6c6f`)
 3. Sign and submit the transaction
-4. Check the event log for:
+4. Check the event log for 7 events:
    - `ChainStarted`
    - `EntryExecuted`
-   - `LinkExecuted`
+   - `LinkExecuted` × 3
    - `FinalReceived`
    - `ChainCompleted`
 
-## Step 8: Verify
+## Step 10: Verify
 
-- **ChainTerminal → getRecord(1)**: Should return the record with `exists: true`
+- **ChainTerminal → getRecord(1)**: data should start with `[VALIDATED][VALIDATED][VALIDATED]`
 - **ChainTerminal → recordCount()**: Should be 1
-- **ChainLink → executionCount()**: Should be 1
+- **ChainLink(1) → executionCount()**: Should be 1
+- **ChainLink(2) → executionCount()**: Should be 1
+- **ChainLink(3) → executionCount()**: Should be 1
 
-## Adding More Links (N-Link Chain)
+## Adding More Links (N > 3)
 
-For a chain with multiple links (Entry → Link₁ → Link₂ → ... → Linkₙ → Terminal):
+For a chain deeper than the minimum 5 contracts:
 
 1. Deploy ChainTerminal
 2. Deploy ChainLink(N) with `step_number: N`, set `nextLink = Terminal`
@@ -105,18 +130,22 @@ For a chain with multiple links (Entry → Link₁ → Link₂ → ... → Link�
 
 ```
 1. Build & deploy ChainTerminal  → get address T
-2. Build & deploy ChainLink      → setNextLink(T) → get address L
-3. Build & deploy ChainEntry     → setNextLink(L) → get address E
-4. On ChainLink: setPrevLink(E)
-5. On ChainTerminal: setPrevLink(L)
-6. Call Entry.startChain(data) → chain executes!
+2. Build & deploy ChainLink(3)   → setNextLink(T)  → get address L₃
+3. Build & deploy ChainLink(2)   → setNextLink(L₃) → get address L₂
+4. Build & deploy ChainLink(1)   → setNextLink(L₂) → get address L₁
+5. Build & deploy ChainEntry     → setNextLink(L₁) → get address E
+6. ChainLink(1).setPrevLink(E)
+7. ChainLink(2).setPrevLink(L₁)
+8. ChainLink(3).setPrevLink(L₂)
+9. ChainTerminal.setPrevLink(L₃)
+10. Call Entry.startChain(data) → chain executes!
 ```
 
 ## Troubleshooting
 
 | Error | Likely Cause |
 |-------|-------------|
-| `PrevLink not set` | Forgot to call `setPrevLink` on ChainLink |
-| `Only prevLink can call this` | Forgot to call `setPrevLink` or wrong address |
+| `PrevLink not set` | Forgot to call `setPrevLink` on a ChainLink |
+| `Only prevLink can call this` | Wrong address in `setPrevLink` |
 | `NextLink not set` | Forgot to call `setNextLink` on ChainEntry |
 | Out of gas | Increase `gas_limit` in the cross-contract call |

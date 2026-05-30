@@ -58,8 +58,9 @@ note right of U
   6. FinalReceived
   7. ChainCompleted
 
-  Default lab (1 link):
+  Minimum depth (3 links):
   ChainStarted → EntryExecuted
+  → LinkExecuted → LinkExecuted
   → LinkExecuted → FinalReceived
   → ChainCompleted
 end note

@@ -43,10 +43,12 @@ pub struct NetworkInfo {
     pub name: String,
 }
 
-/// Expected event order (same as verifier.rs)
+/// Expected event order for minimum-depth chain (5 contracts: Entry + 3 Links + Terminal)
 const EXPECTED_EVENT_ORDER: &[&str] = &[
     "ChainStarted",
     "EntryExecuted",
+    "LinkExecuted",
+    "LinkExecuted",
     "LinkExecuted",
     "FinalReceived",
     "ChainCompleted",

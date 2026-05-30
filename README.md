@@ -2,7 +2,7 @@
 
 A university blockchain lab where students build and verify **generic chains of contracts** — smart contracts arranged as a linked list where each contract calls the next, forming a verifiable chain of arbitrary length — across **Ethereum** (Solidity) and **Polkadot** (ink!), with a comparative analysis of **TON**.
 
-The chain is **not limited to three contracts** — students can create Entry → Link₁ → Link₂ → ... → Linkₙ → Terminal chains of any length, bounded only by the blockchain's gas/weight limits.
+The chain has a **minimum depth of 5 contracts** — students must create chains of at least `Entry → Link₁ → Link₂ → Link₃ → Terminal` (5 contracts), and can extend to any larger length bounded only by the blockchain's gas/weight limits.
 
 ---
 
@@ -61,18 +61,20 @@ Each contract has a single, well-defined role in the linked list:
 
 Any number of `ChainLink` contracts can be inserted between the Entry and the Terminal.
 
-### Default Lab Configuration (3 contracts)
+### Minimum Chain Depth (5 contracts)
+
+The lab requires a chain with **at least 3 ChainLink contracts** between Entry and Terminal:
 
 ```
-User → ChainEntry → ChainLink(1) → ChainTerminal
+User → ChainEntry → ChainLink(1) → ChainLink(2) → ChainLink(3) → ChainTerminal
 ```
 
-This is the simplest chain and the recommended starting point for students.
+This is the minimum acceptable chain. Students can (and are encouraged to) add more links for extra depth.
 
-### Events (exact order for 1-link chain)
+### Events (exact order for minimum-depth 5-contract chain)
 
 ```
-ChainStarted → EntryExecuted → LinkExecuted → FinalReceived → ChainCompleted
+ChainStarted → EntryExecuted → LinkExecuted → LinkExecuted → LinkExecuted → FinalReceived → ChainCompleted
 ```
 
 For N links, `LinkExecuted` appears N times in positions 3 through N+2.
@@ -89,20 +91,22 @@ For N links, `LinkExecuted` appears N times in positions 3 through N+2.
 
 ### Deployment Wiring
 
-Contracts must be deployed and wired in reverse dependency order. For the default 3-contract chain:
+Contracts must be deployed and wired in reverse dependency order. For the minimum-depth 5-contract chain:
 
 ```
-1. Deploy ChainTerminal           → get address T
-2. Deploy ChainLink(step=1)       → get address L
-3. Deploy ChainEntry              → get address E
-4. ChainTerminal.setPrevLink(L)
-5. ChainLink.setNextLink(T)
-6. ChainLink.setPrevLink(E)
-7. ChainEntry.setNextLink(L)
-8. Call E.startChain(data)        → chain executes atomically
+ 1. Deploy ChainTerminal            → get address T
+ 2. Deploy ChainLink(step=3)        → setNextLink(T)     → get address L₃
+ 3. Deploy ChainLink(step=2)        → setNextLink(L₃)    → get address L₂
+ 4. Deploy ChainLink(step=1)        → setNextLink(L₂)    → get address L₁
+ 5. Deploy ChainEntry               → setNextLink(L₁)    → get address E
+ 6. ChainLink(1).setPrevLink(E)
+ 7. ChainLink(2).setPrevLink(L₁)
+ 8. ChainLink(3).setPrevLink(L₂)
+ 9. ChainTerminal.setPrevLink(L₃)
+10. Call E.startChain(data)         → chain executes atomically
 ```
 
-For an N-link chain, deploy ChainLink(N) through ChainLink(1) in reverse, wiring each to the next.
+For the old default (3-contract) chain, deploy ChainLink(1) directly connected to Terminal.
 
 ---
 
@@ -225,8 +229,8 @@ Follow the step-by-step guide at `ethereum/remix/remix-deploy-guide.md`. The sho
 1. Open [Remix IDE](https://remix.ethereum.org/)
 2. Create files for all 6 `.sol` files in `contracts/`
 3. Compile with Solidity 0.8.24
-4. Deploy in order: `ChainTerminal` → `ChainLink(step=1)` → `ChainEntry`
-5. Wire addresses via setter functions
+4. Deploy in order: `ChainTerminal` → `ChainLink(step=3)` → `ChainLink(step=2)` → `ChainLink(step=1)` → `ChainEntry`
+5. Wire addresses via setter functions (each link's `setNextLink`, `setPrevLink`, and `ChainTerminal.setPrevLink`)
 6. Call `ChainEntry.startChain(data)` and inspect events
 
 ### Running Tests
@@ -238,8 +242,8 @@ npx hardhat test
 ```
 
 The test suite (`ethereum/grader/test/chain-test.js`) covers:
-- Deployment and wiring correctness for the generic chain
-- Full chain execution (event order, final state, validation prefix)
+- Deployment and wiring correctness for a minimum-depth 5-contract chain
+- Full chain execution with 3 LinkExecuted events (event order, final state, validation prefix)
 - N-link chain support (test configures Entry → Link₁ → Link₂ → Terminal)
 - Multiple chain executions (2 consecutive runs)
 - Access control (non-owner rejected, non-prevLink rejected)
@@ -316,10 +320,10 @@ The Hardhat-based grader (`ethereum/grader/scripts/grade.js`) runs in 5 phases:
 
 | Phase | Weight | What It Checks |
 |-------|--------|----------------|
-| 1. Compilation | 20% | All 3 contracts compile without errors |
+| 1. Compilation | 20% | All 6 contracts compile without errors (Entry + 3 Links + Terminal + interfaces) |
 | 2. Deployment | 30% | Contracts deploy and wire correctly (setter calls succeed) |
-| 3. Event Chain | 30% | All 5 events emitted in correct order: `ChainStarted → EntryExecuted → LinkExecuted → FinalReceived → ChainCompleted` |
-| 4. Final State | 20% | ChainTerminal stores record with `[VALIDATED]` prefix and non-zero timestamp |
+| 3. Event Chain | 30% | All 7 events emitted in correct order: `ChainStarted → EntryExecuted → LinkExecuted(1) → LinkExecuted(2) → LinkExecuted(3) → FinalReceived → ChainCompleted` |
+| 4. Final State | 20% | ChainTerminal stores record with `[VALIDATED][VALIDATED][VALIDATED]` prefix and non-zero timestamp |
 
 **Pass threshold: 70%**
 
@@ -337,9 +341,9 @@ The Rust-based grader (`polkadot/grader/src/main.rs`) uses `clap` for CLI argume
 
 | Phase | Weight | What It Checks |
 |-------|--------|----------------|
-| 1. Deployment | 50% | Build, upload, instantiate, and wire all 3 contracts |
-| 2. Event Chain | 30% | All 5 events in correct order |
-| 3. Final State | 20% | ChainTerminal stores record correctly |
+| 1. Deployment | 50% | Build, upload, instantiate, and wire all 6 contracts (Entry + 3 Links + Terminal) |
+| 2. Event Chain | 30% | All 7 events in correct order (3 × LinkExecuted) |
+| 3. Final State | 20% | ChainTerminal stores record correctly with `[VALIDATED]` triple prefix |
 
 **Pass threshold: 70%**
 

@@ -2,58 +2,80 @@ const { expect } = require("chai");
 const { ethers } = require("hardhat");
 const { verifyEventOrder, verifyFinalState, EXPECTED_EVENT_ORDER } = require("../scripts/utils/chain-verifier");
 
-describe("Chain of Contracts (Ethereum) — Generic Chain", function () {
-  let chainEntry, chainLink, chainTerminal;
+describe("Chain of Contracts (Ethereum) — Minimum Depth 5", function () {
+  let chainEntry, chainLink1, chainLink2, chainLink3, chainTerminal;
   let deployer;
   const TEST_DATA = ethers.toUtf8Bytes("TestChainData");
 
   beforeEach(async function () {
     [deployer] = await ethers.getSigners();
 
-    // Deploy in reverse dependency order: Terminal → Link → Entry
+    // Deploy in reverse dependency order: Terminal → Link(3) → Link(2) → Link(1) → Entry
     chainTerminal = await ethers.deployContract("ChainTerminal");
     await chainTerminal.waitForDeployment();
 
-    chainLink = await ethers.deployContract("ChainLink", [1]);
-    await chainLink.waitForDeployment();
+    chainLink3 = await ethers.deployContract("ChainLink", [3]);
+    await chainLink3.waitForDeployment();
+
+    chainLink2 = await ethers.deployContract("ChainLink", [2]);
+    await chainLink2.waitForDeployment();
+
+    chainLink1 = await ethers.deployContract("ChainLink", [1]);
+    await chainLink1.waitForDeployment();
 
     chainEntry = await ethers.deployContract("ChainEntry");
     await chainEntry.waitForDeployment();
 
-    // Wire contracts together
+    // Wire contracts: Entry → Link1 → Link2 → Link3 → Terminal
     const eAddr = await chainEntry.getAddress();
-    const lAddr = await chainLink.getAddress();
+    const l1Addr = await chainLink1.getAddress();
+    const l2Addr = await chainLink2.getAddress();
+    const l3Addr = await chainLink3.getAddress();
     const tAddr = await chainTerminal.getAddress();
 
-    await chainTerminal.setPrevLink(lAddr);
-    await chainLink.setNextLink(tAddr);
-    await chainLink.setPrevLink(eAddr);
-    await chainEntry.setNextLink(lAddr);
+    await chainLink3.setNextLink(tAddr);
+    await chainLink3.setPrevLink(l2Addr);
+    await chainLink2.setNextLink(l3Addr);
+    await chainLink2.setPrevLink(l1Addr);
+    await chainLink1.setNextLink(l2Addr);
+    await chainLink1.setPrevLink(eAddr);
+    await chainTerminal.setPrevLink(l3Addr);
+    await chainEntry.setNextLink(l1Addr);
   });
 
   describe("Deployment", function () {
-    it("should deploy all three contracts", async function () {
+    it("should deploy all five contracts", async function () {
       expect(await chainEntry.getAddress()).to.be.properAddress;
-      expect(await chainLink.getAddress()).to.be.properAddress;
+      expect(await chainLink1.getAddress()).to.be.properAddress;
+      expect(await chainLink2.getAddress()).to.be.properAddress;
+      expect(await chainLink3.getAddress()).to.be.properAddress;
       expect(await chainTerminal.getAddress()).to.be.properAddress;
     });
 
     it("should set owner correctly", async function () {
       expect(await chainEntry.owner()).to.equal(deployer.address);
-      expect(await chainLink.owner()).to.equal(deployer.address);
+      expect(await chainLink1.owner()).to.equal(deployer.address);
+      expect(await chainLink2.owner()).to.equal(deployer.address);
+      expect(await chainLink3.owner()).to.equal(deployer.address);
       expect(await chainTerminal.owner()).to.equal(deployer.address);
     });
 
     it("should have correct contract addresses wired", async function () {
-      expect(await chainEntry.nextLink()).to.equal(await chainLink.getAddress());
-      expect(await chainLink.nextLink()).to.equal(await chainTerminal.getAddress());
-      expect(await chainLink.prevLink()).to.equal(await chainEntry.getAddress());
-      expect(await chainLink.stepNumber()).to.equal(1);
+      expect(await chainEntry.nextLink()).to.equal(await chainLink1.getAddress());
+      expect(await chainLink1.nextLink()).to.equal(await chainLink2.getAddress());
+      expect(await chainLink2.nextLink()).to.equal(await chainLink3.getAddress());
+      expect(await chainLink3.nextLink()).to.equal(await chainTerminal.getAddress());
+      expect(await chainLink1.prevLink()).to.equal(await chainEntry.getAddress());
+      expect(await chainLink2.prevLink()).to.equal(await chainLink1.getAddress());
+      expect(await chainLink3.prevLink()).to.equal(await chainLink2.getAddress());
+      expect(await chainLink1.stepNumber()).to.equal(1);
+      expect(await chainLink2.stepNumber()).to.equal(2);
+      expect(await chainLink3.stepNumber()).to.equal(3);
     });
   });
 
   describe("Chain Execution", function () {
-    it("should execute the full Entry→Link→Terminal chain successfully", async function () {
+    it("should execute the full 5-contract chain successfully", async function () {
       const tx = await chainEntry.startChain(TEST_DATA);
       const receipt = await tx.wait();
 
@@ -66,9 +88,10 @@ describe("Chain of Contracts (Ethereum) — Generic Chain", function () {
       expect(initiator).to.equal(deployer.address);
       expect(completed).to.be.true;
 
-      // Verify execution count
-      expect(await chainLink.executionCount()).to.equal(1);
-      expect(await chainLink.getExecutionCount()).to.equal(1);
+      // Verify each link's execution count
+      expect(await chainLink1.executionCount()).to.equal(1);
+      expect(await chainLink2.executionCount()).to.equal(1);
+      expect(await chainLink3.executionCount()).to.equal(1);
 
       // Verify final record in Terminal
       const [cChainId, cData, cHash, cTimestamp, cExists] = await chainTerminal.getRecord(1);
@@ -77,12 +100,12 @@ describe("Chain of Contracts (Ethereum) — Generic Chain", function () {
       expect(cTimestamp).to.be.gt(0);
     });
 
-    it("should emit all events in correct generic order", async function () {
+    it("should emit all 7 events in correct order (3 x LinkExecuted)", async function () {
       const tx = await chainEntry.startChain(TEST_DATA);
       const receipt = await tx.wait();
 
       const logs = receipt.logs.map((log) => {
-        for (const contract of [chainEntry, chainLink, chainTerminal]) {
+        for (const contract of [chainEntry, chainLink1, chainLink2, chainLink3, chainTerminal]) {
           try {
             const parsed = contract.interface.parseLog({
               topics: log.topics,
@@ -101,15 +124,15 @@ describe("Chain of Contracts (Ethereum) — Generic Chain", function () {
       expect(result.received).to.deep.equal(EXPECTED_EVENT_ORDER);
     });
 
-    it("should store validated data with [VALIDATED] prefix", async function () {
+    it("should store validated data with triple [VALIDATED] prefix", async function () {
       await chainEntry.startChain(TEST_DATA);
 
-      const result = await verifyFinalState(chainTerminal, 1, "[VALIDATED]");
+      const result = await verifyFinalState(chainTerminal, 1);
       expect(result.pass, `Final state incorrect: ${result.errors.join("; ")}`).to.be.true;
 
       const [, storedData] = result.record;
       const decoded = ethers.toUtf8String(storedData);
-      expect(decoded).to.equal("[VALIDATED]TestChainData");
+      expect(decoded).to.equal("[VALIDATED][VALIDATED][VALIDATED]TestChainData");
     });
 
     it("should support multiple chain executions", async function () {
@@ -120,32 +143,38 @@ describe("Chain of Contracts (Ethereum) — Generic Chain", function () {
       expect(await chainTerminal.recordCount()).to.equal(2);
     });
 
-    it("should support an arbitrarily long chain via multiple links", async function () {
-      // Deploy a second link and a new terminal
-      const chainLink2 = await ethers.deployContract("ChainLink", [2]);
-      await chainLink2.waitForDeployment();
+    it("should support an even longer chain via additional links", async function () {
+      // Deploy a fourth link and a new terminal
+      const chainLink4 = await ethers.deployContract("ChainLink", [4]);
+      await chainLink4.waitForDeployment();
       const chainTerminal2 = await ethers.deployContract("ChainTerminal");
       await chainTerminal2.waitForDeployment();
 
       const eAddr = await chainEntry.getAddress();
-      const l1Addr = await chainLink.getAddress();
+      const l1Addr = await chainLink1.getAddress();
       const l2Addr = await chainLink2.getAddress();
+      const l3Addr = await chainLink3.getAddress();
+      const l4Addr = await chainLink4.getAddress();
       const t2Addr = await chainTerminal2.getAddress();
 
-      // Wire: Entry → Link1 → Link2 → Terminal2
+      // Wire: Entry → Link1 → Link2 → Link3 → Link4 → Terminal2
       await chainEntry.setNextLink(l1Addr);
-      await chainLink.setNextLink(l2Addr);
-      await chainLink.setPrevLink(eAddr);
-      await chainLink2.setNextLink(t2Addr);
+      await chainLink1.setNextLink(l2Addr);
+      await chainLink1.setPrevLink(eAddr);
+      await chainLink2.setNextLink(l3Addr);
       await chainLink2.setPrevLink(l1Addr);
-      await chainTerminal2.setPrevLink(l2Addr);
+      await chainLink3.setNextLink(l4Addr);
+      await chainLink3.setPrevLink(l2Addr);
+      await chainLink4.setNextLink(t2Addr);
+      await chainLink4.setPrevLink(l3Addr);
+      await chainTerminal2.setPrevLink(l4Addr);
 
       const tx = await chainEntry.startChain(TEST_DATA);
       const receipt = await tx.wait();
 
-      // Verify events for 2-link chain
+      // Verify events for 4-link chain
       const logs = receipt.logs.map((log) => {
-        for (const contract of [chainEntry, chainLink, chainLink2, chainTerminal2]) {
+        for (const contract of [chainEntry, chainLink1, chainLink2, chainLink3, chainLink4, chainTerminal2]) {
           try {
             const parsed = contract.interface.parseLog({ topics: log.topics, data: log.data });
             if (parsed) return { eventName: parsed.name, args: parsed.args, logIndex: log.index };
@@ -154,16 +183,18 @@ describe("Chain of Contracts (Ethereum) — Generic Chain", function () {
         return { eventName: "UNKNOWN", args: [], logIndex: log.index };
       }).filter((e) => e.eventName !== "UNKNOWN");
 
-      const expected2LinkOrder = [
+      const expected4LinkOrder = [
         "ChainStarted",
         "EntryExecuted",
         "LinkExecuted",
-        "LinkExecuted", // second link
+        "LinkExecuted",
+        "LinkExecuted",
+        "LinkExecuted", // fourth link
         "FinalReceived",
         "ChainCompleted",
       ];
 
-      expect(logs.map((l) => l.eventName)).to.deep.equal(expected2LinkOrder);
+      expect(logs.map((l) => l.eventName)).to.deep.equal(expected4LinkOrder);
       expect(await chainTerminal2.recordCount()).to.equal(1);
     });
   });
@@ -178,7 +209,7 @@ describe("Chain of Contracts (Ethereum) — Generic Chain", function () {
 
     it("should reject non-owner setNextLink calls on Link", async function () {
       const [, other] = await ethers.getSigners();
-      const instance = chainLink.connect(other);
+      const instance = chainLink1.connect(other);
       await expect(instance.setNextLink(ethers.Wallet.createRandom().address))
         .to.be.revertedWith("Only owner can call this");
     });
@@ -206,7 +237,7 @@ describe("Chain of Contracts (Ethereum) — Generic Chain", function () {
     });
 
     it("should reject non-prevLink calls to processAndForward", async function () {
-      await expect(chainLink.processAndForward(1, TEST_DATA))
+      await expect(chainLink1.processAndForward(1, TEST_DATA))
         .to.be.revertedWith("Only prevLink can call this");
     });
 

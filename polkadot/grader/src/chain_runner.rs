@@ -35,12 +35,14 @@ pub async fn run_chain(
     // 6. Filter for our contract events by matching topics to deployed addresses
     // 7. Map to ChainEvent structs
 
-    // Dry-run for structure testing
+    // Dry-run for structure testing — minimum depth 5 (3 links)
     if std::env::var("POLKADOT_GRADER_DRY_RUN").is_ok() {
         return Ok(vec![
             ChainEvent { name: "ChainStarted".into(), chain_id: Some(1), data: "test data".into() },
-            ChainEvent { name: "EntryExecuted".into(), chain_id: Some(1), data: format!("Entry -> {}", addrs.chain_link) },
-            ChainEvent { name: "LinkExecuted".into(), chain_id: Some(1), data: format!("Link(1) -> {}", addrs.chain_terminal) },
+            ChainEvent { name: "EntryExecuted".into(), chain_id: Some(1), data: format!("Entry -> Link1") },
+            ChainEvent { name: "LinkExecuted".into(), chain_id: Some(1), data: format!("Link(1) -> Link2") },
+            ChainEvent { name: "LinkExecuted".into(), chain_id: Some(1), data: format!("Link(2) -> Link3") },
+            ChainEvent { name: "LinkExecuted".into(), chain_id: Some(1), data: format!("Link(3) -> {}", addrs.chain_terminal) },
             ChainEvent { name: "FinalReceived".into(), chain_id: Some(1), data: format!("received by {}", addrs.chain_terminal) },
             ChainEvent { name: "ChainCompleted".into(), chain_id: Some(1), data: "completed".into() },
         ]);

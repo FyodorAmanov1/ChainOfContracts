@@ -4,20 +4,23 @@ use std::path::Path;
 /// Addresses of deployed generic chain contracts
 pub struct ContractAddresses {
     pub chain_entry: String,
-    pub chain_link: String,
+    pub chain_link1: String,
+    pub chain_link2: String,
+    pub chain_link3: String,
     pub chain_terminal: String,
 }
 
-/// Deploys the three generic contracts to a substrate node.
+/// Deploys the five generic contracts (Entry + 3 Links + Terminal) to a substrate node.
 ///
 /// Steps:
 /// 1. Build each contract with `cargo contract build`
 /// 2. Upload code blob via subxt contract API
-/// 3. Instantiate each contract in reverse dependency order
-/// 4. Wire addresses: Terminal.setPrevLink(Link), Link.setNextLink(Terminal),
-///    Link.setPrevLink(Entry), Entry.setNextLink(Link)
+/// 3. Instantiate in reverse dependency order: Terminal → Link3 → Link2 → Link1 → Entry
+/// 4. Wire addresses: Terminal.setPrevLink(Link3), Link3.setNextLink(Terminal),
+///    Link3.setPrevLink(Link2), Link2.setNextLink(Link3), Link2.setPrevLink(Link1),
+///    Link1.setNextLink(Link2), Link1.setPrevLink(Entry), Entry.setNextLink(Link1)
 ///
-/// For N-link chains, deploy additional ChainLink instances and wire sequentially.
+/// For N-link chains with depth > 5, deploy additional ChainLink instances and wire sequentially.
 pub async fn deploy_contracts(
     rpc_url: &str,
     suri: &str,
@@ -46,7 +49,9 @@ pub async fn deploy_contracts(
     if std::env::var("POLKADOT_GRADER_DRY_RUN").is_ok() {
         return Ok(ContractAddresses {
             chain_entry: "5C4hrfjw9DjXZTzV3MwzrrAr9P1MJhSrvWGWqi1uS6r5gUFa".into(),
-            chain_link: "5CiPPseXPECbkjWCa6MnjNokrgYjMqmKjGKrT4H3vW4TrQx9".into(),
+            chain_link1: "5CiPPseXPECbkjWCa6MnjNokrgYjMqmKjGKrT4H3vW4TrQx9".into(),
+            chain_link2: "5Dp3fHwXqZ8jKaL7sN2vYcR9tBmW4gQjZxK6nM1vB3pL5rT7".into(),
+            chain_link3: "5EaR2tY8uI4oP6aS0dF9gH3jK1lZ5xV7bN2mQ4wC8vB6nM0p".into(),
             chain_terminal: "5Gv8kX7j5KjLqYjKjqLqYjKjqLqYjKjqLqYjKjqLqYjKjL".into(),
         });
     }

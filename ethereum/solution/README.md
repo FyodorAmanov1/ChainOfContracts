@@ -1,9 +1,9 @@
 # Ethereum Solution — Generic Chain of Contracts
 
-## Architecture
+## Architecture (Minimum Depth 5)
 
 ```
-User → ChainEntry → ChainLink(step=1) → ChainTerminal
+User → ChainEntry → ChainLink(step=1) → ChainLink(step=2) → ChainLink(step=3) → ChainTerminal
 ```
 
 Each contract implements a generic interface and calls the next via a unified `receiveFinal` selector.
@@ -26,31 +26,33 @@ Each contract implements a generic interface and calls the next via a unified `r
 | Aspect | v1.0 (A→B→C) | v2.0 (Generic Linked List) |
 |--------|---------------|---------------------------|
 | Interface | `IContractA/B/C` — specific per contract | `IChainEntry/Link/Terminal` — generic roles |
-| Chain length | Fixed 3 contracts | Arbitrary (N links) |
+| Min chain depth | Fixed 3 contracts | 5 contracts (Entry + 3 Links + Terminal) |
 | Forwarding | Named methods per contract | Uniform `receiveFinal` selector |
 | Access control | `onlyContractA/B` — named | `onlyPrevLink` — generic |
 | Data transformation | ContractB adds `[VALIDATED]` | Each ChainLink adds `[VALIDATED]` |
 
-### Deployment Order
+### Deployment Order (Minimum Depth 5)
 
 ```
-1. Deploy ChainTerminal      → get address T
-2. Deploy ChainLink(step=1)  → get address L
-3. Deploy ChainEntry         → get address E
-4. ChainTerminal.setPrevLink(L)
-5. ChainLink.setNextLink(T)
-6. ChainLink.setPrevLink(E)
-7. ChainEntry.setNextLink(L)
-8. Call ChainEntry.startChain(data)
+ 1. Deploy ChainTerminal            → T
+ 2. Deploy ChainLink(step=3)        → setNextLink(T)    → L₃
+ 3. Deploy ChainLink(step=2)        → setNextLink(L₃)   → L₂
+ 4. Deploy ChainLink(step=1)        → setNextLink(L₂)   → L₁
+ 5. Deploy ChainEntry               → setNextLink(L₁)   → E
+ 6. ChainLink(1).setPrevLink(E)
+ 7. ChainLink(2).setPrevLink(L₁)
+ 8. ChainLink(3).setPrevLink(L₂)
+ 9. ChainTerminal.setPrevLink(L₃)
+10. Call ChainEntry.startChain(data)
 ```
 
-### N-Link Deployment
+### N-Link Deployment (N > 3)
 
 For Entry → Link₁ → Link₂ → ... → Linkₙ → Terminal:
 
 ```
-1. Deploy ChainTerminal          → T
-2. Deploy ChainLink(N).setNextLink(T) → Lₙ
+1. Deploy ChainTerminal             → T
+2. Deploy ChainLink(N).setNextLink(T)  → Lₙ
 3. Deploy ChainLink(N-1).setNextLink(Lₙ) → Lₙ₋₁
 ...
 4. Deploy ChainLink(1).setNextLink(L₂) → L₁
@@ -61,10 +63,10 @@ For Entry → Link₁ → Link₂ → ... → Linkₙ → Terminal:
 9. E.startChain(data)
 ```
 
-### Events (1-link chain)
+### Events (Minimum Depth — 3 Links)
 
 ```
-ChainStarted → EntryExecuted → LinkExecuted → FinalReceived → ChainCompleted
+ChainStarted → EntryExecuted → LinkExecuted → LinkExecuted → LinkExecuted → FinalReceived → ChainCompleted
 ```
 
 ### Expected State Output
@@ -72,7 +74,7 @@ ChainStarted → EntryExecuted → LinkExecuted → FinalReceived → ChainCompl
 ```
 ChainTerminal.getRecord(1) → {
   chainId: 1,
-  data: 0x5b56414c4944415445445d... = "[VALIDATED]<original_data>",
+  data: 0x5b56414c4944415445445d5b56414c4944415445445d5b56414c4944415445445d... = "[VALIDATED][VALIDATED][VALIDATED]<original_data>",
   dataHash: 0x...,
   timestamp: <block_timestamp>,
   exists: true
